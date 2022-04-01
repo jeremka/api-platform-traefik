@@ -2,10 +2,10 @@
 # https://docs.docker.com/develop/develop-images/multistage-build/#stop-at-a-specific-build-stage
 # https://docs.docker.com/compose/compose-file/#target
 
-
 # https://docs.docker.com/engine/reference/builder/#understand-how-arg-and-from-interact
 ARG PHP_VERSION=8.1
-ARG CADDY_VERSION=2
+ARG VARNISH_VERSION=6.4
+ARG OPENRESTY_VERSION=1.17.8.2
 
 # "php" stage
 FROM php:${PHP_VERSION}-fpm-alpine AS api_platform_php
@@ -120,21 +120,23 @@ ENV SYMFONY_PHPUNIT_VERSION=9
 ENTRYPOINT ["docker-entrypoint"]
 CMD ["php-fpm"]
 
-# "caddy" stage
+# "nginx" stage
 # depends on the "php" stage above
-FROM caddy:${CADDY_VERSION}-builder-alpine AS api_platform_caddy_builder
+# The OpenResty distribution of NGINX is only needed for Kubernetes compatiblity (dynamic upstream resolution)
+FROM openresty/openresty:${OPENRESTY_VERSION}-alpine AS api_platform_nginx
 
-# install Mercure and Vulcain modules
-RUN xcaddy build \
-    --with github.com/dunglas/mercure \
-    --with github.com/dunglas/mercure/caddy \
-    --with github.com/dunglas/vulcain \
-    --with github.com/dunglas/vulcain/caddy
+RUN echo -e "env UPSTREAM;\n$(cat /usr/local/openresty/nginx/conf/nginx.conf)" > /usr/local/openresty/nginx/conf/nginx.conf
+COPY docker/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf
 
-FROM caddy:${CADDY_VERSION} AS api_platform_caddy
+WORKDIR /srv/api/public
 
-WORKDIR /srv/api
+COPY --from=api_platform_php /srv/api/public ./
 
-COPY --from=api_platform_caddy_builder /usr/bin/caddy /usr/bin/caddy
-COPY --from=api_platform_php /srv/api/public public/
-COPY docker/caddy/Caddyfile /etc/caddy/Caddyfile
+
+# "varnish" stage
+# does not depend on any of the above stages, but placed here to keep everything in one Dockerfile
+FROM varnish:${VARNISH_VERSION} AS api_platform_varnish
+
+COPY docker/varnish/conf/default.vcl /etc/varnish/default.vcl
+
+CMD ["varnishd", "-F", "-f", "/etc/varnish/default.vcl", "-p", "http_resp_hdr_len=65536", "-p", "http_resp_size=98304"]

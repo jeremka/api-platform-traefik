@@ -1,7 +1,36 @@
 version: "3.4"
 
 # Development environment override
+networks:
+  traefik:
+    name: traefik
+
 services:
+  reverse-proxy:
+    image: traefik:v2.5
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./docker/traefik/config.yml:/etc/traefik/config.yml:ro
+      - ./docker/traefik/certs:/etc/certs:ro
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.traefik=true
+      - traefik.http.routers.traefik.rule=Host(`traefik.${DOMAIN_NAME:-local}`)
+      - traefik.http.routers.traefik.tls=true
+      - traefik.http.services.traefik.loadbalancer.server.port=8080
+    command:
+      - --api.insecure=true
+
   php:
     volumes:
       - ./api:/srv/api:rw,cached
@@ -17,13 +46,20 @@ services:
       target: api_platform_pwa_dev
     volumes:
       - ./pwa:/usr/src/pwa:rw,cached
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.admin.tls=true
+      - traefik.http.routers.admin.rule=Host(`admin.${DOMAIN_NAME:-local}`)
+      - traefik.http.services.admin.loadbalancer.server.port=3000
 
-  caddy:
-    volumes:
-      - ./api/docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./api/public:/srv/api/public:ro
-    environment:
-      MERCURE_EXTRA_DIRECTIVES: demo
+#  caddy:
+#    volumes:
+#      - ./api/docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+#      - ./api/public:/srv/api/public:ro
+#    environment:
+#      MERCURE_EXTRA_DIRECTIVES: demo
 
 ###> doctrine/doctrine-bundle ###
   database:
@@ -33,5 +69,31 @@ services:
         protocol: tcp
 ###< doctrine/doctrine-bundle ###
 
-###> symfony/mercure-bundle ###
-###< symfony/mercure-bundle ###
+  api:
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.api.tls=true
+      - traefik.http.routers.api.rule=Host(`api.${DOMAIN_NAME:-local}`)
+      - traefik.http.services.api.loadbalancer.server.port=80
+  
+  ###> symfony/mercure-bundle ###
+  mercure:
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.mercure.tls=true
+      - traefik.http.routers.mercure.rule=Host(`mercure.${DOMAIN_NAME:-local}`)
+      - traefik.http.services.mercure.loadbalancer.server.port=1337
+  ###< symfony/mercure-bundle ###
+  
+  vulcain:
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.vulcain.tls=true
+      - traefik.http.routers.vulcain.rule=Host(`vulcain.${DOMAIN_NAME:-local}`)
+      - traefik.http.services.vulcain.loadbalancer.server.port=8443
