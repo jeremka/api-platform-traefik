@@ -45,13 +45,13 @@ services:
   vulcain:
     image: dunglas/vulcain
     environment:
-      - CERT_FILE=/certs/localhost.crt
-      - KEY_FILE=/certs/localhost.key
+      - CERT_FILE=/certs/local-cert.pem
+      - KEY_FILE=/certs/local-key.pem
       - UPSTREAM=http://api
     depends_on:
       - api
     volumes:
-      - ./certs:/certs:ro
+      - ./docker/traefik/certs:/certs:ro
     expose:
       - 8443
     ports:
@@ -60,9 +60,9 @@ services:
   mercure:
     image: dunglas/mercure
     environment:
-      #      - ACME_HOSTS=${DOMAIN_NAME}
-      #      - CERT_FILE=/certs/localhost.crt
-      #      - KEY_FILE=/certs/localhost.key
+      - ACME_HOSTS=${DOMAIN_NAME:-local}
+      - CERT_FILE=/certs/local-cert.pem
+      - KEY_FILE=/certs/local-key.pem
       - JWT_KEY=${JWT_KEY}
       - ALLOW_ANONYMOUS=1
       - USE_FORWARDED_HEADERS=true
@@ -74,8 +74,8 @@ services:
       - 1337
     ports:
       - "1337:1337"
-    volumes:
-      - ./certs:/certs:ro
+#    volumes:
+#      - ./docker/traefik/certs:/certs:ro
   
   database:
     image: postgres:${POSTGRES_VERSION:-13}-alpine
